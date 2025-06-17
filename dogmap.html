@@ -1,0 +1,292 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>dogmap - Carte pour chiens (parcs canins, chemins interdits aux chiens,...)</title>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <style>
+    #map { height: 99vh; width: 99%; }
+  </style>
+</head>
+<body>
+  <div id="map"></div>
+
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script src="https://unpkg.com/osmtogeojson@3.0.0-beta.5/osmtogeojson.js"></script>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/leaflet.locatecontrol@0.79.0/dist/L.Control.Locate.min.css" />
+  <script src="https://cdn.jsdelivr.net/npm/leaflet.locatecontrol@0.79.0/dist/L.Control.Locate.min.js"></script>
+  <!-- Style FontAwesome pour les icônes -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+  
+  <script>
+    const map = L.map('map').setView([50.5, 6.1], 11);
+    const MIN_ZOOM = 11;
+
+    // Dog related Icons
+    const dogNoIcon = L.icon({
+	iconUrl: 'https://upload.wikimedia.org/wikipedia/commons/2/26/DIN_4844-2_D-P014.svg',
+	iconSize: [32, 32], // ou plus petit selon goût
+	iconAnchor: [12, 12],
+	className: 'dog-no-icon'
+    });
+    const dogIcon = L.icon({
+	//iconUrl: 'https://upload.wikimedia.org/wikipedia/commons/3/3e/Noun_364.svg',
+	iconUrl: 'icons/dog-allowed.png',
+	iconSize: [32, 32], // ou plus petit selon goût
+	iconAnchor: [12, 12],
+	className: 'dog-icon'
+    });
+    const dogExcrementBagIcon = L.icon({
+    iconUrl: 'https://upload.wikimedia.org/wikipedia/commons/3/3a/Trash_bag_illustration.svg', // Une icône de sac, à fournir
+	iconSize: [20, 20],
+	iconAnchor: [10, 10],
+	popupAnchor: [0, -10]
+    });
+    const veterinaryIcon = L.icon({
+    iconUrl: 'https://upload.wikimedia.org/wikipedia/commons/5/51/Wikiproject_Vetrinary_logo.svg', // Une icône de sac, à fournir
+	iconSize: [20, 20],
+	iconAnchor: [10, 10],
+	popupAnchor: [0, -10]
+    });
+
+
+    //Map background tiles
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+	attribution: '© OpenStreetMap contributors'
+    }).addTo(map);
+    
+    
+    // Geolocalization button
+    lc = L.control.locate({
+	follow: true,          // Suit la position de l'utilisateur en temps réel
+	keepCurrentZoomLevel: true, // Ne change pas le niveau de zoom actuel
+	icon: "fa-solid fa-location-dot", 
+	strings: {
+	    title: "Voir ma position"
+	},
+    }).addTo(map);
+    
+
+    // Right-click on map -> open ID editor
+    map.on("contextmenu", function (e) {
+	const lat = e.latlng.lat.toFixed(5);
+	const lon = e.latlng.lng.toFixed(5);
+	const zoom = map.getZoom();
+
+	const idUrl = `https://www.openstreetmap.org/edit?editor=id#map=${zoom}/${lat}/${lon}`;
+	window.open(idUrl, "_blank");
+
+	L.popup()
+	    .setLatLng(e.latlng)
+	    .setContent("Ouverture de cette position dans l'éditeur iD…")
+	    .openOn(map);
+    });
+
+    const layerGroup = L.layerGroup().addTo(map);
+    let timeoutId = null;
+
+    function openOSMLinkOnClick(feature, layer) {
+	if (!feature.id) return;
+	const osmUrl = "https://www.openstreetmap.org/" + feature.id;
+	
+	layer.on("click", () => {
+	    window.open(osmUrl, "_blank");
+	});
+    }
+    
+    function getMiddleLatLng(coords) {
+	const mid = Math.floor(coords.length / 2);
+	return L.latLng(coords[mid][1], coords[mid][0]);
+    }
+
+    function getStyle(feature) {
+	//console.log(feature);
+	const tags = feature.properties || {};
+	if (tags.leisure === 'dog_park') {
+	    return { color: 'green', weight: 2, fillOpacity: 0.2 };
+	}
+	if (tags.dog === 'no' && tags.highway) {
+	    return { color: 'red', weight: 4 };
+	}
+	if (tags.vending === 'excrement_bags') {
+	    return { color: 'black', weight: 4};
+	}
+	return { color: 'gray' };
+    }
+
+    async function reverseGeocode(lat, lon) {
+	const url = `https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${lat}&lon=${lon}`;
+	const response = await fetch(url, {
+	    headers: {
+		'User-Agent': 'DogMap/1.0 (raphael.maree@uliege.be)'
+	    }
+	});
+	if (!response.ok) return null;
+	const data = await response.json();
+	return data.display_name;
+    }
+
+    function getEditURL(feature) {
+	if (feature.properties.leisure === "dog_park") {
+	    console.log("mapcomplete link");
+	    const coord = feature.geometry.coordinates;
+
+	    //return "https://mapcomplete.org/pets.html?z=19&lat="+coord[1]+"&lon="+coord[0]+"#node/"+feature.id
+	    return "https://mapcomplete.org/pets.html?z=19#"+feature.id
+	}
+	else {
+	    return "https://www.openstreetmap.org/" + feature.id;
+	}
+    }
+    
+    function showFeaturePopup(feature, latlng, additionalInfo) {
+	//console.log("in showfeaturepopup");
+	const name = feature.properties.name ? feature.properties.name : additionalInfo ? additionalInfo : "";
+	let image = feature.properties.panoramax ? '<img width=200 src="https://api.panoramax.xyz/api/pictures/'+feature.properties.panoramax+'/thumb.jpg">' : '';
+	let osmUrl = "https://www.openstreetmap.org/" + feature.id;
+	let editUrl = getEditURL(feature);
+	let popup = L.popup({ closeButton: false })
+	    .setLatLng(latlng)
+	    .setContent(`<strong>${name}</strong><br>${image}<br><a href="${editUrl}">Éditer les données OSM</a><br>`)
+	    .openOn(map);
+	
+	// Ajout de l'adresse par reverse geocoding via Nominatim
+	reverseGeocode(latlng.lat, latlng.lng).then(address => {
+	    if (address) {
+		let tmpcontent = popup.getContent();
+		tmpcontent += `${address}`;
+		popup.setContent(tmpcontent);
+	    }
+	});
+    }
+    
+    
+    function fetchAndDisplayDogData() {
+	if (map.getZoom() < MIN_ZOOM) {
+	    layerGroup.clearLayers(); // nettoie les anciens
+	    return; // ne fait rien si trop zoomé
+	}
+	
+      const bounds = map.getBounds();
+      const south = bounds.getSouth();
+      const west = bounds.getWest();
+      const north = bounds.getNorth();
+      const east = bounds.getEast();
+
+
+	// to add: veterinaires, points d'eau, srpa,...
+	
+      const query = `
+        [out:json][timeout:25];
+        (
+          way["dog"="no"]["highway"](${south},${west},${north},${east});
+          way["leisure"="dog_park"](${south},${west},${north},${east});
+          relation["leisure"="dog_park"](${south},${west},${north},${east});
+           node["vending"="excrement_bags"](${south},${west},${north},${east});
+           way["vending"="excrement_bags"](${south},${west},${north},${east});
+           );
+        out body;
+        >;
+        out skel qt;
+      `;
+
+      fetch('https://overpass-api.de/api/interpreter', {
+        method: 'POST',
+        body: query
+      })
+      .then(res => res.json())
+	    .then(data => {
+		console.log(data);
+        const geojson = osmtogeojson(data);
+        layerGroup.clearLayers(); // remove previous
+        L.geoJSON(geojson, {
+            style: getStyle,
+	    pointToLayer: function (feature, latlng) {
+		const marker = L.marker(latlng, { icon: dogExcrementBagIcon }).addTo(map);
+		marker.on("click", (e) => {
+		    showFeaturePopup(feature, e.latlng,"Distributeur de sac pour excréments")
+		});
+		return marker;
+	    },
+            onEachFeature: (feature, layer) => {
+		console.log(feature);
+		const tags = feature.properties || {};
+		let label = tags.leisure==='dog_park'?'Dog park '+tags.name : {};
+		const coord = feature.geometry.coordinates;
+
+		if (tags.leisure === 'dog_park') {
+		    layer.on("click", (e) => {
+			//popup.setLatLng(e.latlng).openOn(map);
+			showFeaturePopup(feature, e.latlng);
+		    });
+		    layer.on("mouseout", () => {
+			map.closePopup(popup);
+		    });
+		    
+		}
+		else if (tags.dog === 'no') {
+		    openOSMLinkOnClick(feature,layer);
+		       if (tags.leisure === 'nature_reserve') {
+			   label = 'Réserve naturelle';
+		       } else if (tags.landuse === 'forest') {
+			   label = 'Forêt';
+		       } else if (tags.natural === 'wood') {
+			   label = 'Bois';
+		       } else if (tags.protection_title) {
+			   label = tags.protection_title;
+		       } else {
+			   label = '(chemin sans nom)';
+		       }
+		    layer.bindTooltip(`<strong>${label}</strong><br/>Dog access: <code>no</code>`, {
+			sticky: true,
+			direction: 'top',
+			opacity: 0.9
+		    });
+		}
+	  
+		// Ajoute l’icône au centre du chemin
+		if (feature.geometry.type === 'LineString') {
+		    const mid = Math.floor(feature.geometry.coordinates.length / 2);
+		    const coord = feature.geometry.coordinates[mid];
+		    const latlng = L.latLng(coord[1], coord[0]);
+		    L.marker(latlng, { icon: dogNoIcon }).addTo(layerGroup);
+		}
+		else if (feature.geometry.type === 'Polygon' || feature.geometry.type === "MultiPolygon") {
+		    const center = layer.getBounds().getCenter();
+		    const marker = L.marker(center, { icon: dogIcon }).addTo(map);
+		    marker.on("click", (e) => {
+			showFeaturePopup(feature, e.latlng)
+		    });
+		}
+		/* else if (feature.properties.vending === 'excrement_bags') {
+		    console.log("in if excrement");
+		    const coord = feature.geometry.coordinates;
+		    const latlng = L.latLng(coord[1], coord[0]);
+		    const marker = L.marker(latlng, { icon: dogExcrementBagIcon }).addTo(layerGroup);
+		    marker.on("click", (e) => {
+			showFeaturePopup(feature, e.latlng)
+		    });
+		} */
+          }
+        }).addTo(layerGroup);
+      })
+      .catch(err => {
+        console.error(err);
+        alert('Erreur durant la récupération des données OSM');
+      });
+    }
+
+    // Délai avant de relancer la requête (évite surcharge)
+    function debounceFetch() {
+      if (timeoutId) clearTimeout(timeoutId);
+      timeoutId = setTimeout(fetchAndDisplayDogData, 800);
+    }
+
+    map.on('moveend', debounceFetch);
+
+    // Chargement initial
+    fetchAndDisplayDogData();
+  </script>
+</body>
+</html>
