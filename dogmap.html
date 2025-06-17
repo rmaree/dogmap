@@ -6,12 +6,34 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
   <style>
-    #map { height: 99vh; width: 99%; }
+   #map { height: 99vh; width: 99%; }
+
+   .layer-control {
+       position: absolute;
+       top: 10px;
+       right: 10px;
+       z-index: 1000;
+       background: white;
+       padding: 10px;
+       border-radius: 8px;
+       box-shadow: 0 0 8px rgba(0,0,0,0.2);
+       font-size: 14px;
+   }
+   
   </style>
 </head>
 <body>
   <div id="map"></div>
 
+  <!-- <div id="layerControl" class="layer-control">
+       <label><input type="checkbox" value="dog_parks" checked> Parcs pour chiens</label><br>
+       <label><input type="checkbox" value="vets"> Vétérinaires</label><br>
+       <label><input type="checkbox" value="dog_banned_paths" checked> Chemins interdits</label><br>
+       <label><input type="checkbox" value="excrement_bags"> Distributeurs de sacs</label><br>
+       <label><input type="checkbox" value="drinking_water"> Points d'eau</label><br>
+       <label><input type="checkbox" value="training"> Centres d'entraînement</label>
+       </div> -->
+  
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
   <script src="https://unpkg.com/osmtogeojson@3.0.0-beta.5/osmtogeojson.js"></script>
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/leaflet.locatecontrol@0.79.0/dist/L.Control.Locate.min.css" />
@@ -142,7 +164,7 @@
        else if (feature.properties.drinking_water === 'yes' || feature.properties.amenity === 'drinking_water') {
 	   return drinkingWaterIcon;
        }
-       else if (feature.properties.amenity === 'fountain' || feature.properties.man_made === 'water_tap' || feature.properties.drinking_water === 'no') {
+       else if (feature.properties.amenity === 'fountain' || feature.properties.man_made === 'water_tap' || feature.properties.drinking_water === 'no' || feature.properties.amenity === 'watering_place') {
 	   return waterIcon;
        }
        else if (feature.properties.amenity === 'veterinary') {
@@ -151,8 +173,7 @@
        else if (feature.properties.amenity === 'animal_shelter') {
 	   return dogShelterIcon;
        }
-       else if (feature.properties.leisure === 'dog_park') {
-	   console.log(feature);
+       else if (feature.properties.leisure === 'dog_park' || feature.properties.amenity === 'animal_training') {
 	   return dogIcon;
        }
        else return;
@@ -171,7 +192,7 @@
    }
 
    function getEditURL(feature) {
-       if (feature.properties.leisure === "dog_park" || feature.properties.amenity === "animal_training" || feature.properties.animal === "school" || feature.properties.school_type === "dog" || feature.properties.amenity === 'veterinary' || feature.properties.amenity === "animal_shelter") {
+       if (feature.properties.leisure === "dog_park" || feature.properties.amenity === 'veterinary' || feature.properties.amenity === "animal_shelter") {
 	   //const coord = feature.geometry.coordinates;
 	   //return "https://mapcomplete.org/pets.html?z=19&lat="+coord[1]+"&lon="+coord[0]+"#node/"+feature.id
 	   return "https://mapcomplete.org/pets.html?z=19#"+feature.id
@@ -201,8 +222,11 @@
        if (feature.properties.amenity === 'fountain') {
 	   type = "Fontaine ";
        }
+       if (feature.properties.amenity === 'watering_place') {
+	   type = "Abreuvoir ";
+       }
        if  (feature.properties.drinking_water === 'yes' || feature.properties.amenity === 'drinking_water' || feature.properties.man_made === 'water_tap' && !(feature.properties.drinking_water === 'no')) {
-	   type += "Source d'eau potable";
+	   type += "Eau potable";
        }
        if (feature.properties.amenity === 'veterinary') {
 	   type += "Vétérinaire";
@@ -251,6 +275,7 @@
         (
           way["dog"="no"]["highway"](${south},${west},${north},${east});
           way["leisure"="dog_park"](${south},${west},${north},${east});
+          node["leisure"="dog_park"](${south},${west},${north},${east});
           relation["leisure"="dog_park"](${south},${west},${north},${east});
           node["vending"="excrement_bags"](${south},${west},${north},${east});
           way["vending"="excrement_bags"](${south},${west},${north},${east});
@@ -260,6 +285,9 @@
           node["amenity"="veterinary"](${south},${west},${north},${east});
           node["amenity"="animal_shelter"](${south},${west},${north},${east});
           way["amenity"="animal_shelter"](${south},${west},${north},${east});
+          node["amenity"="animal_training"]["animal_training"="dog"](${south},${west},${north},${east});
+          way["amenity"="animal_training"]["animal_training"="dog"](${south},${west},${north},${east});
+          node["amenity"="watering_place"](${south},${west},${north},${east});
            );
         out body;
         >;
