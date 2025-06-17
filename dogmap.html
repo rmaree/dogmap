@@ -20,8 +20,8 @@
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
   
   <script>
-    const map = L.map('map').setView([50.5, 6.1], 11);
-    const MIN_ZOOM = 11;
+    const map = L.map('map').setView([50.5, 6.1], 12);
+    const MIN_ZOOM = 12;
 
     // Dog related Icons
     const dogNoIcon = L.icon({
@@ -38,23 +38,35 @@
 	className: 'dog-icon'
     });
     const dogExcrementBagIcon = L.icon({
-    iconUrl: 'https://upload.wikimedia.org/wikipedia/commons/3/3a/Trash_bag_illustration.svg', // Une icône de sac, à fournir
+    iconUrl: 'https://upload.wikimedia.org/wikipedia/commons/3/3a/Trash_bag_illustration.svg', 
 	iconSize: [20, 20],
 	iconAnchor: [10, 10],
 	popupAnchor: [0, -10]
     });
     const veterinaryIcon = L.icon({
-    iconUrl: 'https://upload.wikimedia.org/wikipedia/commons/5/51/Wikiproject_Vetrinary_logo.svg', // Une icône de sac, à fournir
+	iconUrl: 'https://upload.wikimedia.org/wikipedia/commons/5/51/Wikiproject_Vetrinary_logo.svg', 
 	iconSize: [20, 20],
 	iconAnchor: [10, 10],
 	popupAnchor: [0, -10]
     });
+   const waterIcon = L.icon({
+       iconUrl: 'icons/water.png',
+       iconSize: [24, 24],
+       iconAnchor: [10, 10],
+       popupAnchor: [0, -10]
+   });
+   const drinkingWaterIcon = L.icon({
+       iconUrl: 'icons/drinking_water.png',
+       iconSize: [24, 24],
+       iconAnchor: [10, 10],
+       popupAnchor: [0, -10]
+   });
 
 
-    //Map background tiles
-    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-	attribution: '© OpenStreetMap contributors'
-    }).addTo(map);
+   //Map background tiles
+   L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+       attribution: '© OpenStreetMap contributors'
+   }).addTo(map);
     
     
     // Geolocalization button
@@ -128,12 +140,13 @@
     }
 
     function getEditURL(feature) {
-	if (feature.properties.leisure === "dog_park") {
-	    console.log("mapcomplete link");
-	    const coord = feature.geometry.coordinates;
-
+	if (feature.properties.leisure === "dog_park" || feature.properties.amenity === "animal_training" || feature.properties.animal === "school" || feature.properties.school_type === "dog") {
+	    //const coord = feature.geometry.coordinates;
 	    //return "https://mapcomplete.org/pets.html?z=19&lat="+coord[1]+"&lon="+coord[0]+"#node/"+feature.id
 	    return "https://mapcomplete.org/pets.html?z=19#"+feature.id
+	}
+	else if (feature.properties.drinking_water === 'yes' || feature.properties.amenity === 'drinking_water') {
+	    return "https://mapcomplete.org/drinking_water.html?z=19#"+feature.id 
 	}
 	else {
 	    return "https://www.openstreetmap.org/" + feature.id;
@@ -141,14 +154,35 @@
     }
     
     function showFeaturePopup(feature, latlng, additionalInfo) {
-	//console.log("in showfeaturepopup");
-	const name = feature.properties.name ? feature.properties.name : additionalInfo ? additionalInfo : "";
-	let image = feature.properties.panoramax ? '<img width=200 src="https://api.panoramax.xyz/api/pictures/'+feature.properties.panoramax+'/thumb.jpg">' : '';
+	//console.log(feature);
+	let name = " ";
+	if (feature.properties.name) name += feature.properties.name;
+	if (feature.properties.alt_name) {
+	    name += " ";
+	    name += feature.properties.alt_name;
+	}
+	if (additionalInfo) {
+	    name += " ";
+	    name += additionalInfo
+	}
+
+	let type = " ";
+	if (feature.properties.leisure === "dog_park") { type = "Parc canin" }
+	if (feature.properties.amenity === "animal_training" || feature.properties.animal === "school" || feature.properties.school_type === "dog") { type += " Lieu d'entraînement" }
+	if (feature.properties.amenity === 'fountain') {
+		type = "Fontaine ";
+	}
+	if  (feature.properties.drinking_water === 'yes' || feature.properties.amenity === 'drinking_water' || feature.properties.man_made === 'water_tap' && !(feature.properties.drinking_water === 'no')) {
+	    type += "Source d'eau potable";
+	}
+	
+	    
+	let image = feature.properties.panoramax ? '<img width=200 src="https://api.panoramax.xyz/api/pictures/'+feature.properties.panoramax+'/thumb.jpg">' : feature.properties.image ? '<img width=200 src="'+feature.properties.image+'">' : "";
 	let osmUrl = "https://www.openstreetmap.org/" + feature.id;
 	let editUrl = getEditURL(feature);
 	let popup = L.popup({ closeButton: false })
 	    .setLatLng(latlng)
-	    .setContent(`<strong>${name}</strong><br>${image}<br><a href="${editUrl}">Éditer les données OSM</a><br>`)
+	    .setContent(`<strong>${name}</strong><br>${type}<br>${image}<br><a href="${editUrl}">Éditer les données OSM</a><br>`)
 	    .openOn(map);
 	
 	// Ajout de l'adresse par reverse geocoding via Nominatim
@@ -162,11 +196,11 @@
     }
     
     
-    function fetchAndDisplayDogData() {
-	if (map.getZoom() < MIN_ZOOM) {
-	    layerGroup.clearLayers(); // nettoie les anciens
-	    return; // ne fait rien si trop zoomé
-	}
+   function fetchAndDisplayDogData() {
+       if (map.getZoom() < MIN_ZOOM) {
+	   layerGroup.clearLayers(); // nettoie les anciens
+	   return; // ne fait rien si trop zoomé
+       }
 	
       const bounds = map.getBounds();
       const south = bounds.getSouth();
@@ -175,37 +209,52 @@
       const east = bounds.getEast();
 
 
-	// to add: veterinaires, points d'eau, srpa,...
-	
-      const query = `
-        [out:json][timeout:25];
+       // to add: veterinaires, points d'eau, srpa,...
+       
+       const query = `
+        [out:json][timeout:30];
         (
           way["dog"="no"]["highway"](${south},${west},${north},${east});
           way["leisure"="dog_park"](${south},${west},${north},${east});
           relation["leisure"="dog_park"](${south},${west},${north},${east});
-           node["vending"="excrement_bags"](${south},${west},${north},${east});
-           way["vending"="excrement_bags"](${south},${west},${north},${east});
+          node["vending"="excrement_bags"](${south},${west},${north},${east});
+          way["vending"="excrement_bags"](${south},${west},${north},${east});
+          node["amenity"="drinking_water"](${south},${west},${north},${east});
+          node["man_made"="water_tap"](${south},${west},${north},${east});
+          node["amenity"="fountain"](${south},${west},${north},${east});
            );
         out body;
         >;
         out skel qt;
-      `;
+       `;
 
-      fetch('https://overpass-api.de/api/interpreter', {
+       fetch('https://overpass-api.de/api/interpreter', {
         method: 'POST',
         body: query
       })
       .then(res => res.json())
 	    .then(data => {
-		console.log(data);
+		//console.log(data);
         const geojson = osmtogeojson(data);
         layerGroup.clearLayers(); // remove previous
         L.geoJSON(geojson, {
             style: getStyle,
 	    pointToLayer: function (feature, latlng) {
-		const marker = L.marker(latlng, { icon: dogExcrementBagIcon }).addTo(map);
+		let featureIcon = {};
+		let additionalInfo = {};
+		if (feature.properties.vending === 'excrement_bags') {
+		    featureIcon = dogExcrementBagIcon;
+		    additionalInfo = "Distributeur de sac pour excréments";
+		}
+		else if (feature.properties.drinking_water === 'yes' || feature.properties.amenity === 'drinking_water') {
+		    featureIcon = drinkingWaterIcon;
+		}
+		else if (feature.properties.amenity === 'fountain' || feature.properties.man_made === 'water_tap' || feature.properties.drinking_water === 'no') {
+		    featureIcon = waterIcon;
+		}
+		const marker = L.marker(latlng, { icon: featureIcon }).addTo(map);
 		marker.on("click", (e) => {
-		    showFeaturePopup(feature, e.latlng,"Distributeur de sac pour excréments")
+		    showFeaturePopup(feature, e.latlng,additionalInfo)
 		});
 		return marker;
 	    },
@@ -259,15 +308,6 @@
 			showFeaturePopup(feature, e.latlng)
 		    });
 		}
-		/* else if (feature.properties.vending === 'excrement_bags') {
-		    console.log("in if excrement");
-		    const coord = feature.geometry.coordinates;
-		    const latlng = L.latLng(coord[1], coord[0]);
-		    const marker = L.marker(latlng, { icon: dogExcrementBagIcon }).addTo(layerGroup);
-		    marker.on("click", (e) => {
-			showFeaturePopup(feature, e.latlng)
-		    });
-		} */
           }
         }).addTo(layerGroup);
       })
