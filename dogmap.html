@@ -28,14 +28,14 @@
    // Dog related Icons
    const dogNoIcon = L.icon({
        iconUrl: 'https://upload.wikimedia.org/wikipedia/commons/2/26/DIN_4844-2_D-P014.svg',
-       iconSize: [32, 32], // ou plus petit selon goût
+       iconSize: [32, 32], 
        iconAnchor: [12, 12],
        className: 'dog-no-icon'
    });
    const dogIcon = L.icon({
        //iconUrl: 'https://upload.wikimedia.org/wikipedia/commons/3/3e/Noun_364.svg',
        iconUrl: 'icons/dog-allowed.png',
-       iconSize: [32, 32], // ou plus petit selon goût
+       iconSize: [32, 32], 
        iconAnchor: [12, 12],
        className: 'dog-icon'
    });
@@ -61,6 +61,13 @@
        iconUrl: 'icons/drinking_water.png',
        iconSize: [24, 24],
        iconAnchor: [10, 10],
+       popupAnchor: [0, -10]
+   });
+   //
+   const dogShelterIcon = L.icon({
+       iconUrl: 'https://wiki.openstreetmap.org/w/images/e/e6/Dog_shelter_icon.png',
+       iconSize: [32, 32], 
+       iconAnchor: [12, 12],
        popupAnchor: [0, -10]
    });
 
@@ -115,7 +122,6 @@
    }
 
    function getStyle(feature) {
-       //console.log(feature);
        const tags = feature.properties || {};
        if (tags.leisure === 'dog_park') {
 	   return { color: 'green', weight: 2, fillOpacity: 0.2 };
@@ -129,6 +135,29 @@
        return { color: 'gray' };
    }
 
+   function getFeatureIcon(feature) {
+       if (feature.properties.vending === 'excrement_bags') {
+	   return dogExcrementBagIcon;
+       }
+       else if (feature.properties.drinking_water === 'yes' || feature.properties.amenity === 'drinking_water') {
+	   return drinkingWaterIcon;
+       }
+       else if (feature.properties.amenity === 'fountain' || feature.properties.man_made === 'water_tap' || feature.properties.drinking_water === 'no') {
+	   return waterIcon;
+       }
+       else if (feature.properties.amenity === 'veterinary') {
+	   return veterinaryIcon;
+       }
+       else if (feature.properties.amenity === 'animal_shelter') {
+	   return dogShelterIcon;
+       }
+       else if (feature.properties.leisure === 'dog_park') {
+	   console.log(feature);
+	   return dogIcon;
+       }
+       else return;
+   }
+   
    async function reverseGeocode(lat, lon) {
        const url = `https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${lat}&lon=${lon}`;
        const response = await fetch(url, {
@@ -142,7 +171,7 @@
    }
 
    function getEditURL(feature) {
-       if (feature.properties.leisure === "dog_park" || feature.properties.amenity === "animal_training" || feature.properties.animal === "school" || feature.properties.school_type === "dog" || feature.properties.amenity === 'veterinary') {
+       if (feature.properties.leisure === "dog_park" || feature.properties.amenity === "animal_training" || feature.properties.animal === "school" || feature.properties.school_type === "dog" || feature.properties.amenity === 'veterinary' || feature.properties.amenity === "animal_shelter") {
 	   //const coord = feature.geometry.coordinates;
 	   //return "https://mapcomplete.org/pets.html?z=19&lat="+coord[1]+"&lon="+coord[0]+"#node/"+feature.id
 	   return "https://mapcomplete.org/pets.html?z=19#"+feature.id
@@ -154,23 +183,21 @@
 	   return "https://www.openstreetmap.org/" + feature.id;
        }
    }
-   
-   function showFeaturePopup(feature, latlng, additionalInfo) {
+
+   // Function to create content in popup depending on feature
+   function showFeaturePopup(feature, latlng) {
        //console.log(feature);
-       let name = " ";
+       let name = "";
        if (feature.properties.name) name += feature.properties.name;
        if (feature.properties.alt_name) {
 	   name += " ";
 	   name += feature.properties.alt_name;
        }
-       if (additionalInfo) {
-	   name += " ";
-	   name += additionalInfo
-       }
-
        let type = " ";
        if (feature.properties.leisure === "dog_park") { type = "Parc canin" }
+       if (feature.properties.sport === "dog_racing") { type += " - Terrain de course" }
        if (feature.properties.amenity === "animal_training" || feature.properties.animal === "school" || feature.properties.school_type === "dog") { type += " Lieu d'entraînement" }
+       if (feature.properties.amenity === "animal_shelter") { type = " Refuge animalier" }
        if (feature.properties.amenity === 'fountain') {
 	   type = "Fontaine ";
        }
@@ -180,14 +207,17 @@
        if (feature.properties.amenity === 'veterinary') {
 	   type += "Vétérinaire";
        }
+       if (feature.properties.vending === 'excrement_bags') {
+	   type = "Distributeur de sachets pour excréments";
+       }
 
-       //support image from panoramax (as stored by mapcomplete) or regular url
+       // Include image from panoramax (as stored by mapcomplete) or regular url
        let image = feature.properties.panoramax ? '<img width=200 src="https://api.panoramax.xyz/api/pictures/'+feature.properties.panoramax+'/thumb.jpg">' : feature.properties.image ? '<img width=200 src="'+feature.properties.image+'">' : "";
-       let osmUrl = "https://www.openstreetmap.org/" + feature.id;
        let editUrl = getEditURL(feature);
-       let popup = L.popup({ closeButton: false })
+       let website = feature.properties.website ? '<a href="'+feature.properties.website+'">Site web</a>' : "";
+       let popup = L.popup({ closeButton: true })
 		    .setLatLng(latlng)
-		    .setContent(`<strong>${name}</strong><br>${type}<br>${image}<br><a href="${editUrl}">Éditer les données OSM</a><br>`)
+		    .setContent(`<strong>${name}</strong><br><strong>${type}</strong><br>${image}<br><a href="${editUrl}">Éditer les données OSM</a><br>${website}<br>`)
 		    .openOn(map);
        
        // Ajout de l'adresse par reverse geocoding via Nominatim
@@ -214,7 +244,7 @@
        const east = bounds.getEast();
 
 
-       // to add: srpa,... see other tags: https://wiki.openstreetmap.org/wiki/Category:Animals
+       // to add: see other tags: https://wiki.openstreetmap.org/wiki/Category:Animals
        
        const query = `
         [out:json][timeout:30];
@@ -228,6 +258,8 @@
           node["man_made"="water_tap"](${south},${west},${north},${east});
           node["amenity"="fountain"](${south},${west},${north},${east});
           node["amenity"="veterinary"](${south},${west},${north},${east});
+          node["amenity"="animal_shelter"](${south},${west},${north},${east});
+          way["amenity"="animal_shelter"](${south},${west},${north},${east});
            );
         out body;
         >;
@@ -246,24 +278,11 @@
                L.geoJSON(geojson, {
 		   style: getStyle,
 		   pointToLayer: function (feature, latlng) {
-		       let featureIcon = {};
-		       let additionalInfo = {};
-		       if (feature.properties.vending === 'excrement_bags') {
-			   featureIcon = dogExcrementBagIcon;
-			   additionalInfo = "Distributeur de sac pour excréments";
-		       }
-		       else if (feature.properties.drinking_water === 'yes' || feature.properties.amenity === 'drinking_water') {
-			   featureIcon = drinkingWaterIcon;
-		       }
-		       else if (feature.properties.amenity === 'fountain' || feature.properties.man_made === 'water_tap' || feature.properties.drinking_water === 'no') {
-			   featureIcon = waterIcon;
-		       }
-		       else if (feature.properties.amenity === 'veterinary') {
-			   featureIcon = veterinaryIcon;
-		       }
+		       //let featureIcon = {};
+		       let featureIcon = getFeatureIcon(feature);
 		       const marker = L.marker(latlng, { icon: featureIcon }).addTo(map);
 		       marker.on("click", (e) => {
-			   showFeaturePopup(feature, e.latlng,additionalInfo)
+			   showFeaturePopup(feature, e.latlng)
 		       });
 		       return marker;
 		   },
@@ -275,13 +294,8 @@
 
 		       if (tags.leisure === 'dog_park') {
 			   layer.on("click", (e) => {
-			       //popup.setLatLng(e.latlng).openOn(map);
 			       showFeaturePopup(feature, e.latlng);
 			   });
-			   layer.on("mouseout", () => {
-			       map.closePopup(popup);
-			   });
-			   
 		       }
 		       else if (tags.dog === 'no') {
 			   openOSMLinkOnClick(feature,layer);
@@ -312,7 +326,8 @@
 		       }
 		       else if (feature.geometry.type === 'Polygon' || feature.geometry.type === "MultiPolygon") {
 			   const center = layer.getBounds().getCenter();
-			   const marker = L.marker(center, { icon: dogIcon }).addTo(map);
+			   let featureIcon = getFeatureIcon(feature);
+			   const marker = L.marker(center, { icon: featureIcon }).addTo(map);
 			   marker.on("click", (e) => {
 			       showFeaturePopup(feature, e.latlng)
 			   });
