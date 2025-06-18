@@ -6,6 +6,12 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
   <style>
+   html, body {
+       margin: 0;
+       padding: 0;
+       overflow-x: hidden; /* <-- empêche le scroll horizontal */
+   }
+   
    #map { height: 97vh; width: 99%; }
 
    #side-panel {
@@ -49,6 +55,19 @@
        margin-top: 10px;
    }
 
+   #zoom-warning {
+       position: absolute;
+       bottom: 10px;
+       left: 10px;
+       background-color: rgba(255, 255, 255, 0.85);
+       padding: 6px 10px;
+       border-radius: 5px;
+       font-size: 14px;
+       display: none;
+       z-index: 1000;
+       box-shadow: 0 0 5px rgba(0,0,0,0.2);
+   }
+   
   </style>
 </head>
 
@@ -62,7 +81,7 @@
 	    <label><input type="checkbox" value="dog_parks" checked> Parcs à chiens</label><br>
 	    <label><input type="checkbox" value="vets_shelters" checked> Vétérinaires & Refuges</label><br>
 	    <label><input type="checkbox" value="dog_banned_paths" checked> Chemins interdits</label><br>
-	    <label><input type="checkbox" value="excrement_toilets" checked> Excréments & Poubelles</label><br> <!-- dog_toilet, waste_basket,   -->
+	    <label><input type="checkbox" value="excrement_toilets" checked> Sachets & Poubelles</label><br> <!-- dog_toilet, waste_basket,   -->
 	    <label><input type="checkbox" value="water_spots" checked> Points d'eau</label><br> 
 	    <label><input type="checkbox" value="training" checked> Dressage canin</label><br>
 	    <div class="panel-buttons">
@@ -73,7 +92,9 @@
 	<div id="panel-toggle">&#9776;</div>
     </div>
 
-  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <div id="zoom-warning">Zoomez davantage pour afficher les données.</div>
+    
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
   <script src="https://unpkg.com/osmtogeojson@3.0.0-beta.5/osmtogeojson.js"></script>
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/leaflet.locatecontrol@0.79.0/dist/L.Control.Locate.min.css" />
   <script src="https://cdn.jsdelivr.net/npm/leaflet.locatecontrol@0.79.0/dist/L.Control.Locate.min.js"></script>
@@ -520,6 +541,15 @@
 
    map.on('moveend', debounceFetch);
 
+   map.on('moveend zoomend', () => {
+       const zoomWarning = document.getElementById('zoom-warning');
+       if (map.getZoom() < MIN_ZOOM) {
+	   zoomWarning.style.display = 'block';
+       } else {
+	   zoomWarning.style.display = 'none';
+       }
+   });
+   
    // Chargement initial
    fetchAndDisplayDogData(0);
   </script>
