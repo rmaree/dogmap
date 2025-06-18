@@ -1,39 +1,78 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <title>dogmap - Carte pour chiens (parcs canins, chemins interdits aux chiens,...)</title>
+  <title>dogmap - Carte pour chiens</title>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
   <style>
-   #map { height: 99vh; width: 99%; }
+   #map { height: 97vh; width: 99%; }
 
-   .layer-control {
+   #side-panel {
        position: absolute;
-       top: 10px;
-       right: 10px;
-       z-index: 1000;
+       top: 50px;
+       right: 0;
+       width: 250px;
        background: white;
+       border-left: 1px solid #ccc;
        padding: 10px;
-       border-radius: 8px;
-       box-shadow: 0 0 8px rgba(0,0,0,0.2);
-       font-size: 14px;
+       box-shadow: -2px 0 5px rgba(0,0,0,0.2);
+       transition: transform 0.3s ease;
+       z-index: 1000;
+       display: flex;
+       flex-direction: row-reverse;
    }
-   
+
+   #side-panel.collapsed {
+       transform: translateX(220px); /* cache tout sauf le bouton */
+   }
+
+   #panel-content {
+       width: 220px;
+   }
+
+   #panel-toggle {
+       width: 30px;
+       height: 30px;
+       margin-top: 10px;
+       background: #4CAF50;
+       color: white;
+       text-align: center;
+       line-height: 30px;
+       cursor: pointer;
+       border-radius: 5px 0 0 5px;
+   }
+
+   .panel-buttons {
+       display: flex;
+       gap: 10px;
+       margin-top: 10px;
+   }
+
   </style>
 </head>
-<body>
-  <div id="map"></div>
 
-  <!-- <div id="layerControl" class="layer-control">
-       <label><input type="checkbox" value="dog_parks" checked> Parcs pour chiens</label><br>
-       <label><input type="checkbox" value="vets"> Vétérinaires</label><br>
-       <label><input type="checkbox" value="dog_banned_paths" checked> Chemins interdits</label><br>
-       <label><input type="checkbox" value="excrement_bags"> Distributeurs de sacs</label><br>
-       <label><input type="checkbox" value="drinking_water"> Points d'eau</label><br>
-       <label><input type="checkbox" value="training"> Centres d'entraînement</label>
-       </div> -->
-  
+
+<body>
+    <div id="map"></div>
+
+    <div id="side-panel" class="collapsed">
+	<div id="panel-content">
+	    <h3>Données affichées</h3>
+	    <label><input type="checkbox" value="dog_parks" checked> Parcs à chiens</label><br>
+	    <label><input type="checkbox" value="vets_shelters" checked> Vétérinaires & Refuges</label><br>
+	    <label><input type="checkbox" value="dog_banned_paths" checked> Chemins interdits</label><br>
+	    <label><input type="checkbox" value="excrement_toilets" checked> Excréments & Poubelles</label><br> <!-- dog_toilet, waste_basket,   -->
+	    <label><input type="checkbox" value="water_spots" checked> Points d'eau</label><br> 
+	    <label><input type="checkbox" value="training" checked> Dressage canin</label><br>
+	    <div class="panel-buttons">
+		<button id="toggleAllBtn">Deselect</button>
+		<button id="refreshBtn">🔄 Actualiser</button>
+	    </div>
+	</div>
+	<div id="panel-toggle">&#9776;</div>
+    </div>
+
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
   <script src="https://unpkg.com/osmtogeojson@3.0.0-beta.5/osmtogeojson.js"></script>
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/leaflet.locatecontrol@0.79.0/dist/L.Control.Locate.min.css" />
@@ -47,6 +86,29 @@
    const map = L.map('map').setView([50.4975, 5.8671], 12);
    const MIN_ZOOM = 12;
 
+   function getSelectedLayers() {
+       return Array.from(document.querySelectorAll('#side-panel input[type=checkbox]'))
+		   .filter(input => input.checked)
+		   .map(input => input.value);
+   }
+   
+   document.getElementById('panel-toggle').addEventListener('click', () => {
+       document.getElementById('side-panel').classList.toggle('collapsed');
+   });
+
+   let allSelected = false;
+   document.getElementById('toggleAllBtn').addEventListener('click', () => {
+       const checkboxes = document.querySelectorAll('#side-panel input[type="checkbox"]');
+       checkboxes.forEach(cb => cb.checked = allSelected);
+       allSelected = !allSelected;
+       document.getElementById('toggleAllBtn').textContent = allSelected ? 'Select' : 'Deselect';
+       fetchAndDisplayDogData(1);
+   });
+   
+   document.getElementById('refreshBtn').addEventListener('click', () => {
+       fetchAndDisplayDogData(1);
+   });
+   
    // Dog related Icons
    const dogNoIcon = L.icon({
        iconUrl: 'https://upload.wikimedia.org/wikipedia/commons/2/26/DIN_4844-2_D-P014.svg',
@@ -85,19 +147,30 @@
        iconAnchor: [10, 10],
        popupAnchor: [0, -10]
    });
-   //
    const dogShelterIcon = L.icon({
        iconUrl: 'https://wiki.openstreetmap.org/w/images/e/e6/Dog_shelter_icon.png',
        iconSize: [32, 32], 
        iconAnchor: [12, 12],
        popupAnchor: [0, -10]
    });
-
-
+   const dogToiletIcon = L.icon({
+       iconUrl: 'icons/dog-toilet.png',
+       iconSize: [32, 32], 
+       iconAnchor: [12, 12],
+       popupAnchor: [0, -10]
+   });
+   const dogWasteBasketIcon = L.icon({
+       iconUrl: 'https://upload.wikimedia.org/wikipedia/commons/9/9a/Maki2-waste-basket-24.svg',
+       iconSize: [32, 32], 
+       iconAnchor: [12, 12],
+       popupAnchor: [0, -10]
+   });
+   
+   
    //Map background tiles
    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-       attribution: '© OpenStreetMap contributors'
-   }).addTo(map);
+				    attribution: '© OpenStreetMap contributors'
+				}).addTo(map);
    
    
    // Geolocalization button
@@ -176,6 +249,16 @@
        else if (feature.properties.leisure === 'dog_park' || feature.properties.amenity === 'animal_training') {
 	   return dogIcon;
        }
+       else if (feature.properties.amenity === 'dog_toilet') {
+	   return dogToiletIcon;
+       }
+       else if (feature.properties.waste === 'dog_excrement') {
+	   return dogWasteBasketIcon;
+       }
+       else if (feature.properties.dog === 'no') {
+	   return dogNoIcon;
+       }
+	 
        else return;
    }
    
@@ -191,15 +274,18 @@
        return data.display_name;
    }
 
+   // get URL to edit based on feature type
    function getEditURL(feature) {
        if (feature.properties.leisure === "dog_park" || feature.properties.amenity === 'veterinary' || feature.properties.amenity === "animal_shelter") {
-	   //const coord = feature.geometry.coordinates;
-	   //return "https://mapcomplete.org/pets.html?z=19&lat="+coord[1]+"&lon="+coord[0]+"#node/"+feature.id
 	   return "https://mapcomplete.org/pets.html?z=19#"+feature.id
        }
        else if (feature.properties.drinking_water === 'yes' || feature.properties.amenity === 'drinking_water') {
 	   return "https://mapcomplete.org/drinking_water.html?z=19#"+feature.id 
        }
+       else if (feature.properties.waste === "dog_excrement" || feature.properties.vending === 'excrement_bags') {
+	   return "https://mapcomplete.org/waste.html?z=19#"+feature.id 
+       }
+       
        else {
 	   return "https://www.openstreetmap.org/" + feature.id;
        }
@@ -207,7 +293,6 @@
 
    // Function to create content in popup depending on feature
    function showFeaturePopup(feature, latlng) {
-       //console.log(feature);
        let name = "";
        if (feature.properties.name) name += feature.properties.name;
        if (feature.properties.alt_name) {
@@ -234,6 +319,12 @@
        if (feature.properties.vending === 'excrement_bags') {
 	   type = "Distributeur de sachets pour excréments";
        }
+       if (feature.properties.amenity === 'dog_toilet') {
+	   type = "Zone pour excréments";
+       }
+       if (feature.properties.waste === "dog_excrement") {
+	   type = "Poubelle à excréments";
+       }
 
        // Include image from panoramax (as stored by mapcomplete) or regular url
        let image = feature.properties.panoramax ? '<img width=200 src="https://api.panoramax.xyz/api/pictures/'+feature.properties.panoramax+'/thumb.jpg">' : feature.properties.image ? '<img width=200 src="'+feature.properties.image+'">' : "";
@@ -253,13 +344,85 @@
 	   }
        });
    }
+
+
+   function getOverpassBlocks(selectedLayers, bounds) {
+       const bbox = `${bounds.getSouth()},${bounds.getWest()},${bounds.getNorth()},${bounds.getEast()}`;
+       const blocks = [];
+
+       if (selectedLayers.includes('dog_parks')) {
+	   blocks.push(`
+                        node["leisure"="dog_park"](${bbox});
+                        way["leisure"="dog_park"](${bbox});
+                        relation["leisure"="dog_park"](${bbox});
+	   `);
+       }
+
+       if (selectedLayers.includes('vets_shelters')) {
+	   blocks.push(`
+                        node["amenity"="veterinary"](${bbox});
+                        way["amenity"="veterinary"](${bbox});
+	                node["amenity"="animal_shelter"](${bbox});
+                        way["amenity"="animal_shelter"](${bbox});
+           `);
+       }
+
+       if (selectedLayers.includes('dog_banned_paths')) {
+	   blocks.push(`way["dog"="no"](${bbox});`);
+	   //blocks.push(`way["dog"="no"]["highway"](${bbox});`);
+       }
+
+       if (selectedLayers.includes('excrement_toilets')) {
+	   blocks.push(`
+                        node["vending"="excrement_bags"](${bbox});
+                        way["vending"="excrement_bags"](${bbox});
+                        node["amenity"="dog_toilet"](${bbox});
+                        way["amenity"="dog_toilet"](${bbox});
+                        node["waste"="dog_excrement"](${bbox});
+                        way["waste"="dog_excrement"](${bbox});
+	   `);
+       }
+
+       if (selectedLayers.includes('water_spots')) {
+	   blocks.push(`
+	       node["amenity"="drinking_water"](${bbox});
+	       node["man_made"="water_tap"](${bbox});
+               node["amenity"="fountain"](${bbox});
+               node["amenity"="watering_place"](${bbox});
+	   `);
+       }
+
+       //relation["amenity"="animal_training"]["animal_training"="dog"](${bbox});
+       if (selectedLayers.includes('training')) {
+	   blocks.push(`
+                        node["amenity"="animal_training"]["animal_training"="dog"](${bbox});
+                        way["amenity"="animal_training"]["animal_training"="dog"](${bbox});
+	   `);
+       }
+       
+       return blocks;
+   }
+
+   function buildOverpassQuery(selectedLayers, bounds) {
+       const blocks = getOverpassBlocks(selectedLayers, bounds).join('\n');
+
+       return `
+    [out:json][timeout:25];
+    (
+      ${blocks}
+    );
+    out body;
+    >;
+    out skel qt;
+       `;
+   }
    
-   
-   function fetchAndDisplayDogData() {
+   function fetchAndDisplayDogData(refresh) {
        if (map.getZoom() < MIN_ZOOM) {
 	   layerGroup.clearLayers(); // nettoie les anciens
-	   return; // ne fait rien si trop zoomé
+	   return; // ne fait rien si trop dezoomé
        }
+       if (refresh) { layerGroup.clearLayers(); }
        
        const bounds = map.getBounds();
        const south = bounds.getSouth();
@@ -269,38 +432,19 @@
 
 
        // to add: see other tags: https://wiki.openstreetmap.org/wiki/Category:Animals
-       
-       const query = `
-        [out:json][timeout:30];
-        (
-          way["dog"="no"]["highway"](${south},${west},${north},${east});
-          way["leisure"="dog_park"](${south},${west},${north},${east});
-          node["leisure"="dog_park"](${south},${west},${north},${east});
-          relation["leisure"="dog_park"](${south},${west},${north},${east});
-          node["vending"="excrement_bags"](${south},${west},${north},${east});
-          way["vending"="excrement_bags"](${south},${west},${north},${east});
-          node["amenity"="drinking_water"](${south},${west},${north},${east});
-          node["man_made"="water_tap"](${south},${west},${north},${east});
-          node["amenity"="fountain"](${south},${west},${north},${east});
-          node["amenity"="veterinary"](${south},${west},${north},${east});
-          node["amenity"="animal_shelter"](${south},${west},${north},${east});
-          way["amenity"="animal_shelter"](${south},${west},${north},${east});
-          node["amenity"="animal_training"]["animal_training"="dog"](${south},${west},${north},${east});
-          way["amenity"="animal_training"]["animal_training"="dog"](${south},${west},${north},${east});
-          node["amenity"="watering_place"](${south},${west},${north},${east});
-           );
-        out body;
-        >;
-        out skel qt;
-       `;
+       // use nwr[]
+       // "waste"="dog_excrement", amenity=dog_toilet
+       // string blocks based on selected filters in UI
 
+       const selectedLayers = getSelectedLayers();
+       const query = buildOverpassQuery(selectedLayers, bounds);
+       
        fetch('https://overpass-api.de/api/interpreter', {
-           method: 'POST',
-           body: query
+	   method: 'POST',
+	   body: query
        })
 	   .then(res => res.json())
 	   .then(data => {
-	       //console.log(data);
                const geojson = osmtogeojson(data);
                layerGroup.clearLayers(); // remove previous
                L.geoJSON(geojson, {
@@ -315,7 +459,6 @@
 		       return marker;
 		   },
 		   onEachFeature: (feature, layer) => {
-		       //console.log(feature);
 		       const tags = feature.properties || {};
 		       let label = tags.leisure==='dog_park'?'Dog park '+tags.name : {};
 		       const coord = feature.geometry.coordinates;
@@ -345,7 +488,7 @@
 			   });
 		       }
 		       
-		       // Ajoute l’icône au centre du chemin
+		       // Ajoute icônes sur les géometries (centre du chemin, centre d'une zone)
 		       if (feature.geometry.type === 'LineString') {
 			   const mid = Math.floor(feature.geometry.coordinates.length / 2);
 			   const coord = feature.geometry.coordinates[mid];
@@ -372,13 +515,13 @@
    // Délai avant de relancer la requête (évite surcharge)
    function debounceFetch() {
        if (timeoutId) clearTimeout(timeoutId);
-       timeoutId = setTimeout(fetchAndDisplayDogData, 800);
+       timeoutId = setTimeout(fetchAndDisplayDogData, 100);
    }
 
    map.on('moveend', debounceFetch);
 
    // Chargement initial
-   fetchAndDisplayDogData();
+   fetchAndDisplayDogData(0);
   </script>
 </body>
 </html>
