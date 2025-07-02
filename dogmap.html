@@ -9,10 +9,10 @@
    html, body {
        margin: 0;
        padding: 0;
-       overflow-x: hidden; /* <-- empêche le scroll horizontal */
+       overflow-x: hidden; /* no horizontal scroll */
    }
    
-   #map { height: 97vh; width: 99%; }
+   #map { height: 96vh; width: 99%; }
 
    #side-panel {
        position: absolute;
@@ -30,7 +30,7 @@
    }
 
    #side-panel.collapsed {
-       transform: translateX(220px); /* cache tout sauf le bouton */
+       transform: translateX(220px); /* hide the panel except button */
    }
 
    #panel-content {
@@ -92,16 +92,16 @@
 	<div id="panel-toggle">&#9776;</div>
     </div>
 
-    <div id="zoom-warning">Zoomez davantage pour afficher les données.</div>
+    <!-- <div id="zoom-warning">Zoomez davantage pour afficher les données.</div> -->
     
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-  <script src="https://unpkg.com/osmtogeojson@3.0.0-beta.5/osmtogeojson.js"></script>
-  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/leaflet.locatecontrol@0.79.0/dist/L.Control.Locate.min.css" />
-  <script src="https://cdn.jsdelivr.net/npm/leaflet.locatecontrol@0.79.0/dist/L.Control.Locate.min.js"></script>
-  <!-- Style FontAwesome pour les icônes -->
-  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    <script src="https://unpkg.com/osmtogeojson@3.0.0-beta.5/osmtogeojson.js"></script>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/leaflet.locatecontrol@0.79.0/dist/L.Control.Locate.min.css" />
+    <script src="https://cdn.jsdelivr.net/npm/leaflet.locatecontrol@0.79.0/dist/L.Control.Locate.min.js"></script>
+    <!-- Style FontAwesome pour les icônes -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
   
-  <script>
+    <script>
 
    // Center map on Wallonia/Spa
    const map = L.map('map').setView([50.4975, 5.8671], 12);
@@ -237,13 +237,14 @@
        return L.latLng(coords[mid][1], coords[mid][0]);
    }
 
-   function getStyle(feature) {
+     function getStyle(feature) {
+	 //console.log(feature);
        const tags = feature.properties || {};
        if (tags.leisure === 'dog_park') {
 	   return { color: 'green', weight: 2, fillOpacity: 0.2 };
        }
-       if (tags.dog === 'no' && tags.highway) {
-	   return { color: 'red', weight: 4 };
+	 if (tags.dog === 'no' && (tags.highway || feature.geometry.type === 'Polygon' || feature.geometry.type === 'MultiPolygon')) {
+	     return { color: 'red', weight: 6 };
        }
        if (tags.vending === 'excrement_bags') {
 	   return { color: 'black', weight: 4};
@@ -367,6 +368,7 @@
    }
 
 
+   //Function to build overpass query using blocks for each feature type
    function getOverpassBlocks(selectedLayers, bounds) {
        const bbox = `${bounds.getSouth()},${bounds.getWest()},${bounds.getNorth()},${bounds.getEast()}`;
        const blocks = [];
@@ -438,7 +440,7 @@
        `;
    }
    
-   function fetchAndDisplayDogData(refresh) {
+     function fetchAndDisplayDogData(refresh) {
        if (map.getZoom() < MIN_ZOOM) {
 	   layerGroup.clearLayers(); // nettoie les anciens
 	   return; // ne fait rien si trop dezoomé
@@ -454,8 +456,6 @@
 
        // to add: see other tags: https://wiki.openstreetmap.org/wiki/Category:Animals
        // use nwr[]
-       // "waste"="dog_excrement", amenity=dog_toilet
-       // string blocks based on selected filters in UI
 
        const selectedLayers = getSelectedLayers();
        const query = buildOverpassQuery(selectedLayers, bounds);
@@ -514,7 +514,8 @@
 			   const mid = Math.floor(feature.geometry.coordinates.length / 2);
 			   const coord = feature.geometry.coordinates[mid];
 			   const latlng = L.latLng(coord[1], coord[0]);
-			   L.marker(latlng, { icon: dogNoIcon }).addTo(layerGroup);
+			   //L.marker(latlng, { icon: dogNoIcon }).addTo(layerGroup);
+			   L.marker(latlng, { icon: getFeatureIcon(feature) }).addTo(layerGroup);
 		       }
 		       else if (feature.geometry.type === 'Polygon' || feature.geometry.type === "MultiPolygon") {
 			   const center = layer.getBounds().getCenter();
@@ -533,25 +534,63 @@
 	   });
    }
 
-   // Délai avant de relancer la requête (évite surcharge)
-   function debounceFetch() {
-       if (timeoutId) clearTimeout(timeoutId);
-       timeoutId = setTimeout(fetchAndDisplayDogData, 100);
-   }
 
-   map.on('moveend', debounceFetch);
+     let lastBounds = null;
+     function boundsChangedSignificantly(newBounds) {
+	 if (!lastBounds) return true;
+	 // Check if lastBounds include new bounds to avoid zoom then small moves re-fetching data
+	 return !lastBounds.contains(newBounds);
+     }
 
-   map.on('moveend zoomend', () => {
-       const zoomWarning = document.getElementById('zoom-warning');
-       if (map.getZoom() < MIN_ZOOM) {
-	   zoomWarning.style.display = 'block';
-       } else {
-	   zoomWarning.style.display = 'none';
-       }
-   });
-   
-   // Chargement initial
-   fetchAndDisplayDogData(0);
+     // Délai+verification bornes avant de relancer la requête (évite surcharge Overpass)
+     function debounceFetch() {
+	 if (timeoutId) clearTimeout(timeoutId);
+	 timeoutId = setTimeout(() => {
+             const currentZoom = map.getZoom();
+             const currentBounds = map.getBounds();
+             if (currentZoom < MIN_ZOOM) {
+		 showZoomWarning(); 
+		 return;
+             }
+             if (!boundsChangedSignificantly(currentBounds)) {
+		 //minor move e.g. zoomin, do not update
+		 return;
+             }
+             lastBounds = currentBounds;
+             fetchAndDisplayDogData(); // ta requête Overpass
+	 }, 500);
+     }
+
+
+     function showZoomWarning() {
+	 const existingWarning = document.getElementById('zoom-warning');
+	 if (existingWarning) return; // Do not duplicate warning
+	 
+	 const warning = document.createElement('div');
+	 warning.id = 'zoom-warning';
+	 warning.textContent = '💡 Zoomez davantage pour actualiser les données.';
+	 warning.style.position = 'absolute';
+	 warning.style.bottom = '10px';
+	 warning.style.left = '10px';
+	 warning.style.backgroundColor = 'rgba(255, 255, 255, 0.9)';
+	 warning.style.padding = '8px 12px';
+	 warning.style.borderRadius = '6px';
+	 warning.style.boxShadow = '0 2px 6px rgba(0, 0, 0, 0.15)';
+	 warning.style.fontSize = '14px';
+	 warning.style.zIndex = 1000;
+	 warning.style.display = 'block';
+	 document.body.appendChild(warning);
+
+	 // Delete warning message after 3 seconds
+	 setTimeout(() => {
+             warning.remove();
+	 }, 3000);
+     }
+
+     map.on('moveend', debounceFetch);
+
+     // Chargement initial
+     fetchAndDisplayDogData(0);
   </script>
 </body>
 </html>
